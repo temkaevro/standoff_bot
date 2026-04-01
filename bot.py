@@ -108,7 +108,9 @@ async def skin_selected(callback: types.CallbackQuery, state: FSMContext):
     skin = callback.data.split("_", 1)[1]
     await state.update_data(skin=skin, stickers=[], current_sticker_index=0)
     await state.set_state(SellStates.waiting_for_stickers_count)
-    await callback.message.edit_text("📌 Сколько наклеек на скине? (1-4)\nВведи число:")
+    # Удаляем инлайн-сообщение и отправляем новое для ввода числа
+    await callback.message.delete()
+    await callback.message.answer("📌 Сколько наклеек на скине? (1-4)\nВведи число:")
     await callback.answer()
 
 # Количество наклеек
@@ -176,7 +178,9 @@ async def sticker_selected(callback: types.CallbackQuery, state: FSMContext):
     else:
         await state.update_data(stickers=stickers_list)
         await state.set_state(SellStates.waiting_for_price_gold)
-        await callback.message.edit_text("💵 Введи цену в Голде (или 0):", reply_markup=get_main_keyboard())
+        # Удаляем инлайн-сообщение и отправляем новое для ввода цен
+        await callback.message.delete()
+        await callback.message.answer("💵 Введи цену в Голде (или 0):", reply_markup=get_main_keyboard())
     await callback.answer()
 
 # Обработка выбора "та же наклейка" или "другая"
@@ -197,11 +201,13 @@ async def sticker_choice(callback: types.CallbackQuery, state: FSMContext):
         else:
             await state.update_data(stickers=stickers_list)
             await state.set_state(SellStates.waiting_for_price_gold)
-            await callback.message.edit_text("💵 Введи цену в Голде (или 0):", reply_markup=get_main_keyboard())
+            await callback.message.delete()
+            await callback.message.answer("💵 Введи цену в Голде (или 0):", reply_markup=get_main_keyboard())
     else:  # different_sticker
         await state.set_state(SellStates.waiting_for_sticker)
+        # Удаляем текущее сообщение и начинаем заново выбор наклейки
         await callback.message.delete()
-        await callback.message.answer("Выбери следующую наклейку:", reply_markup=get_stickers_keyboard(get_stickers(), page=0))
+        await ask_next_sticker(callback.message, state)
     await callback.answer()
 
 # Ввод цен
@@ -356,13 +362,13 @@ async def confirmation_callback(callback: types.CallbackQuery, state: FSMContext
         await callback.message.answer("Выбери действие:", reply_markup=get_main_keyboard())
     elif action == "edit_price":
         await state.set_state(SellStates.waiting_for_price_gold)
-        await callback.message.answer("💵 Введи новую цену в Голде (или 0):")
         await callback.message.delete()
+        await callback.message.answer("💵 Введи новую цену в Голде (или 0):")
     elif action == "edit_stickers":
         await state.update_data(stickers=[], current_sticker_index=0)
         await state.set_state(SellStates.waiting_for_stickers_count)
-        await callback.message.answer("📌 Сколько наклеек на скине? (1-4)")
         await callback.message.delete()
+        await callback.message.answer("📌 Сколько наклеек на скине? (1-4)")
     elif action == "cancel":
         await state.clear()
         await callback.message.edit_caption(caption="❌ Публикация отменена.")
@@ -409,6 +415,7 @@ async def edit_price_callback(callback: types.CallbackQuery, state: FSMContext):
     listing_id = int(callback.data.split("_")[2])
     await state.update_data(edit_listing_id=listing_id)
     await state.set_state("waiting_for_edit_price_gold")
+    await callback.message.delete()
     await callback.message.answer("💵 Введи новую цену в Голде (или 0):")
     await callback.answer()
 
