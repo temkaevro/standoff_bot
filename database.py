@@ -6,17 +6,22 @@ from typing import List, Dict, Optional, Any
 DB_PATH = "standoff.db"
 
 def get_connection():
-    """Возвращает соединение с базой данных."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
+def _parse_stickers(row: Dict) -> Dict:
+    """Преобразует поле stickers из JSON строки в список."""
+    if row and 'stickers' in row and row['stickers']:
+        try:
+            row['stickers'] = json.loads(row['stickers'])
+        except:
+            row['stickers'] = []
+    return row
+
 def init_db():
-    """Создаёт таблицы, если их нет."""
     conn = get_connection()
     cursor = conn.cursor()
-    
-    # Таблица пользователей
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -24,16 +29,12 @@ def init_db():
             registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-    
-    # Таблица оружия (справочник)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS weapons (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT UNIQUE
         )
     ''')
-    
-    # Таблица скинов (справочник)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS skins (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,8 +44,6 @@ def init_db():
             UNIQUE(weapon_id, name)
         )
     ''')
-    
-    # Таблица наклеек (справочник)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS stickers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,15 +51,13 @@ def init_db():
             rarity TEXT
         )
     ''')
-    
-    # Таблица объявлений
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS listings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
             weapon_name TEXT,
             skin_name TEXT,
-            stickers TEXT,  -- JSON список наклеек
+            stickers TEXT,
             price_gold INTEGER DEFAULT 0,
             price_rub INTEGER DEFAULT 0,
             price_stars INTEGER DEFAULT 0,
@@ -72,14 +69,11 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users (user_id)
         )
     ''')
-    
     conn.commit()
     conn.close()
     logging.info("Database initialized.")
 
-# === Вспомогательные функции для работы с пользователями ===
 def register_user(user_id: int, username: str):
-    """Регистрирует пользователя, если его нет."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute('''
@@ -96,7 +90,6 @@ def user_exists(user_id: int) -> bool:
     conn.close()
     return exists
 
-# === Функции для работы со справочниками ===
 def get_weapons() -> List[str]:
     conn = get_connection()
     cursor = conn.cursor()
@@ -128,11 +121,11 @@ def get_skins_by_weapon(weapon_name: str) -> List[str]:
 def add_skin(weapon_name: str, skin_name: str):
     conn = get_connection()
     cursor = conn.cursor()
-    # Находим weapon_id
     cursor.execute("SELECT id FROM weapons WHERE name = ?", (weapon_name,))
     weapon_row = cursor.fetchone()
     if weapon_row:
-        cursor.execute("INSERT OR IGNORE INTO skins (weapon_id, name) VALUES (?, ?)", (weapon_row["id"], skin_name))
+        cursor.execute("INSERT OR IGNORE INTO skins (weapon_id, name) VALUES (?, ?)",
+                       (weapon_row["id"], skin_name))
         conn.commit()
     conn.close()
 
@@ -151,11 +144,9 @@ def add_sticker(name: str, rarity: str = "Обычная"):
     conn.commit()
     conn.close()
 
-# === Функции для работы с объявлениями ===
 def create_listing(user_id: int, weapon_name: str, skin_name: str, stickers: List[str],
                    price_gold: int, price_rub: int, price_stars: int,
                    trade: bool, bargain: bool, photo_file_id: str) -> int:
-    """Создаёт объявление и возвращает его ID."""
     conn = get_connection()
     cursor = conn.cursor()
     stickers_json = json.dumps(stickers)
@@ -169,10 +160,10 @@ def create_listing(user_id: int, weapon_name: str, skin_name: str, stickers: Lis
     conn.commit()
     listing_id = cursor.lastrowid
     conn.close()
+    logging.info(f"Created listing {listing_id} for user {user_id}")
     return listing_id
 
 def get_active_listings_by_skin(weapon_name: str, skin_name: str) -> List[Dict]:
-    """Возвращает активные объявления для указанного скина, сортированные по дате."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute('''
@@ -182,7 +173,10 @@ def get_active_listings_by_skin(weapon_name: str, skin_name: str) -> List[Dict]:
     ''', (weapon_name, skin_name))
     rows = cursor.fetchall()
     conn.close()
-    return [dict(row) for row in rows]
+    result = [dict(row) for row in rows]
+    for r in result:
+        _parse_stickers(r)
+    return result
 
 def get_listing_by_id(listing_id: int) -> Optional[Dict]:
     conn = get_connection()
@@ -190,7 +184,11 @@ def get_listing_by_id(listing_id: int) -> Optional[Dict]:
     cursor.execute("SELECT * FROM listings WHERE id = ?", (listing_id,))
     row = cursor.fetchone()
     conn.close()
-    return dict(row) if row else None
+    if row:
+        res = dict(row)
+        _parse_stickers(res)
+        return res
+    return None
 
 def get_user_listings(user_id: int) -> List[Dict]:
     conn = get_connection()
@@ -202,10 +200,12 @@ def get_user_listings(user_id: int) -> List[Dict]:
     ''', (user_id,))
     rows = cursor.fetchall()
     conn.close()
-    return [dict(row) for row in rows]
+    result = [dict(row) for row in rows]
+    for r in result:
+        _parse_stickers(r)
+    return result
 
 def delete_listing(listing_id: int):
-    """Мягкое удаление (помечает как неактивное)."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("UPDATE listings SET active = 0 WHERE id = ?", (listing_id,))
