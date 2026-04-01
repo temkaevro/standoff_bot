@@ -30,6 +30,10 @@ dp = Dispatcher(storage=storage)
 
 # Инициализация БД
 init_db()
+from database import get_weapons
+if not get_weapons():
+    from seed_full import seed_full
+    seed_full()
 
 # Временные данные для процесса продажи
 user_data = {}
