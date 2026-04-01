@@ -480,10 +480,26 @@ async def help_button(message: types.Message):
         "По всем вопросам пишите @temkaevro",
         reply_markup=get_main_inline_keyboard()
     )
-
 # ==================== ЗАПУСК ====================
 async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+# ==================== ВЕБ-СЕРВЕР ДЛЯ RENDER ====================
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+def run_web_server():
+    server = HTTPServer(('0.0.0.0', 10000), HealthHandler)
+    server.serve_forever()
+
+web_thread = threading.Thread(target=run_web_server, daemon=True)
+web_thread.start()
